@@ -40,7 +40,6 @@ impl TerminalTable {
         Self { size, table }
     }
 
-
     fn get(&self, state: &SearchState) -> Option<usize> {
         match state {
             SearchState::Terminal { a, b } => {
@@ -59,6 +58,27 @@ impl TerminalTable {
 enum SearchState {
     Primal { x: usize, y: usize },
     Terminal { a: usize, b: usize },
+}
+
+impl SearchState {
+    fn normalize(&self) -> Self {
+        match self {
+            SearchState::Primal { x, y } => {
+                if x >= y {
+                    SearchState::Primal { x: *x, y: *y }
+                } else {
+                    SearchState::Primal { x: *y, y: *x }
+                }
+            }
+            SearchState::Terminal { a, b } => {
+                if a >= b {
+                    SearchState::Terminal { a: *a, b: *b }
+                } else {
+                    SearchState::Terminal { a: *b, b: *a }
+                }
+            }
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -116,6 +136,7 @@ impl Solver {
         cost_table: &mut HashMap<SearchState, (usize, Option<SearchState>)>,
         queue: &mut VecDeque<SearchState>,
     ) {
+        let state = state.normalize();
         if !cost_table.contains_key(&state) {
             cost_table.insert(state.clone(), (cost, Some(parent_state.clone())));
             queue.push_back(state);
@@ -135,6 +156,11 @@ impl Solver {
         while let Some(state) = queue.pop_front() {
             let cost = cost_table[&state].0 + 1;
             let next_cost = cost + 1;
+
+            if next_cost >= min_cost {
+                break;
+            }
+
             match state {
                 SearchState::Primal { x, y } => {
                     let lcm = x * y >> Self::gcd_trailing(x, y);
@@ -244,9 +270,9 @@ impl Solver {
 }
 
 fn main() {
-    const TERMINAL_TABLE_SIZE: usize = 5000;
-    let mut solver = Solver::new(TERMINAL_TABLE_SIZE, 998244351);
-    let initial_state = SearchState::Primal { x: 1, y: 0 };
+    const TERMINAL_TABLE_SIZE: usize = 10000;
+    let mut solver = Solver::new(TERMINAL_TABLE_SIZE, 998244353);
+    let initial_state = SearchState::Primal { x: 1, y: 1 };
     let (cost, path) = solver.solve(initial_state).unwrap();
     println!("cost: {}", cost);
     for state in path.iter().rev() {
