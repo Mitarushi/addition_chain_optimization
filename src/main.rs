@@ -1,4 +1,5 @@
 use std::collections::{HashMap, VecDeque};
+use std::collections::hash_map::Entry::Vacant;
 
 // x, y, mが与えられたとき、m<=lcm(x, y)ならa, b>=0, ax+by=mを満たすa, bが存在すれば一意
 // a, b <= sizeに対して、(a, b)を作るのに必要な最小手数を計算
@@ -142,9 +143,10 @@ impl Solver {
         cost_table: &mut HashMap<SearchState, (usize, Option<SearchState>)>,
         queue: &mut VecDeque<SearchState>,
     ) {
-        let state = state.normalize();
-        if !cost_table.contains_key(&state) {
-            cost_table.insert(state.clone(), (cost, Some(parent_state.clone())));
+        let state_norm = state.normalize();
+        let entry = cost_table.entry(state_norm);
+        if let Vacant(entry) = entry {
+            entry.insert((cost, Some(parent_state.clone())));
             queue.push_back(state);
         }
     }
@@ -161,7 +163,7 @@ impl Solver {
         let mut min_state = None;
 
         while let Some(state) = queue.pop_front() {
-            let cost = cost_table[&state].0;
+            let cost = cost_table[&state.normalize()].0;
             let next_cost = cost + 1;
 
             // 終了判定
@@ -248,7 +250,7 @@ impl Solver {
                     );
                 }
                 SearchState::Terminal { a, b } => {
-                    if min_cost < cost + Self::log2(a.max(b)) as usize {
+                    if min_cost <= cost + Self::log2(a.max(b) - 1) as usize {
                         continue;
                     }
 
@@ -293,7 +295,7 @@ impl Solver {
 
         let mut state = &min_state?;
         let mut path = vec![state.clone()];
-        while let (_, Some(parent_state)) = cost_table.get(state).unwrap() {
+        while let (_, Some(parent_state)) = cost_table.get(&state.normalize()).unwrap() {
             state = parent_state;
             path.push(state.clone());
         }
