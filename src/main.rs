@@ -143,6 +143,7 @@ enum SearchState {
 }
 
 impl SearchState {
+    // x, yを入れ替えても等価なので、常にx >= yとする
     fn normalize_to_sorted(&self) -> Self {
         match self {
             SearchState::Primal { x, y } => {
@@ -248,6 +249,7 @@ impl Solver {
         Ok(u as usize)
     }
 
+    // find a, b, s.t. ax+by=m, 0<=a, b
     fn crt(x: usize, y: usize, m: usize) -> Result<(usize, usize), String> {
         let gcd = Self::gcd_trailing(x, y);
         let x = x >> gcd;
