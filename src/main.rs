@@ -1,5 +1,6 @@
+use rustc_hash::FxHashMap as HashMap;
 use std::collections::hash_map::Entry::Vacant;
-use std::collections::{HashMap, VecDeque};
+use std::collections::VecDeque;
 
 #[derive(Clone, Debug)]
 enum MulOperation {
@@ -292,8 +293,8 @@ impl Solver {
     fn solve(&self, m: usize, initial_state: SearchState) -> Option<(usize, Vec<MulOperation>)> {
         let mut queue = VecDeque::new();
         queue.push_back(initial_state.clone());
-        let mut cost_table = HashMap::new();
-        let mut terminal_to_primal = HashMap::new();
+        let mut cost_table = HashMap::default();
+        let mut terminal_to_primal = HashMap::default();
         cost_table.insert(initial_state, (0, MulOperation::Identity));
 
         let m_tail = m.trailing_zeros();
