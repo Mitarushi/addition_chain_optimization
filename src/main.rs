@@ -10,7 +10,7 @@ struct TerminalTable {
 
 impl TerminalTable {
     fn new(size: usize) -> Self {
-        let mut table = vec![vec![usize::MAX; size]; size];
+        let mut table = vec![vec![usize::MAX / 2; size]; size];
 
         let mut queue = VecDeque::new();
         queue.push_back((0, 1));
@@ -117,6 +117,10 @@ impl Solver {
     }
 
     fn crt(x: usize, y: usize, m: usize) -> Option<(usize, usize)> {
+        let gcd = Self::gcd_trailing(x, y);
+        let x = x >> gcd;
+        let y = y >> gcd;
+        let m = m >> gcd;
         let x_inv = Self::mod_inv(x, y);
         let a = (m * x_inv) % y;
         let ax = a * x;
@@ -141,20 +145,21 @@ impl Solver {
         }
     }
 
-    fn solve(&mut self, m: usize, initial_state: SearchState) -> Option<(usize, Vec<SearchState>)> {
+    fn solve(&self, m: usize, initial_state: SearchState) -> Option<(usize, Vec<SearchState>)> {
         let mut queue = VecDeque::new();
         queue.push_back(initial_state.clone());
         let mut cost_table = HashMap::new();
         cost_table.insert(initial_state, (0, None));
 
         let m_tail = m.trailing_zeros();
-        let mut min_cost = usize::MAX;
+        let mut min_cost = usize::MAX / 2;
         let mut min_state = None;
 
         while let Some(state) = queue.pop_front() {
             let cost = cost_table[&state].0;
             let next_cost = cost + 1;
 
+            // 終了判定
             match state {
                 SearchState::Primal { x, y } => {
                     if x == m || y == m {
@@ -178,7 +183,7 @@ impl Solver {
             }
 
             if next_cost >= min_cost {
-                break;
+                continue;
             }
 
             match state {
@@ -285,9 +290,69 @@ impl Solver {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    fn naive_dp(size: usize) -> Vec<usize> {
+        let mut table = vec![vec![usize::MAX / 2; size]; size];
+        table[1][1] = 0;
+
+        for i in 0..size {
+            for j in 0..size {
+                if i % 2 == 0 {
+                    table[i][j] = table[i][j].min(table[i / 2][j] + 1);
+                }
+                if j % 2 == 0 {
+                    table[i][j] = table[i][j].min(table[i][j / 2] + 1);
+                }
+                if i >= j {
+                    table[i][j] = table[i][j].min(table[i - j][j] + 1);
+                }
+                if j >= i {
+                    table[i][j] = table[i][j].min(table[i][j - i] + 1);
+                }
+            }
+        }
+
+        table
+            .into_iter()
+            .map(|row| row.into_iter().min().unwrap())
+            .collect()
+    }
+
+    fn test_solver<const TERMINAL_TABLE_SIZE: usize, const MAX_SIZE: usize>() {
+        let solver = super::Solver::new(TERMINAL_TABLE_SIZE);
+        let expected = naive_dp(MAX_SIZE);
+
+        for i in 1..MAX_SIZE {
+            let initial_state = super::SearchState::Primal { x: 1, y: 1 };
+            let (cost, path) = solver.solve(i, initial_state).unwrap();
+            assert_eq!(cost, expected[i], "i: {}, path: {:?}", i, path);
+        }
+    }
+    #[test]
+    fn test_solver_with_small_table() {
+        test_solver::<2, 1000>();
+    }
+
+    #[test]
+    fn test_solver_with_medium_table() {
+        test_solver::<100, 1000>();
+    }
+
+    #[test]
+    fn test_solver_with_large_table() {
+        test_solver::<1000, 1000>();
+    }
+
+    // #[test]
+    // fn test_solver_10000() {
+    //     test_solver::<3000, 10000>();
+    // }
+}
+
 fn main() {
     const TERMINAL_TABLE_SIZE: usize = 100;
-    let mut solver = Solver::new(TERMINAL_TABLE_SIZE);
+    let solver = Solver::new(TERMINAL_TABLE_SIZE);
     let initial_state = SearchState::Primal { x: 1, y: 1 };
     let (cost, path) = solver.solve(128, initial_state).unwrap();
     println!("cost: {}", cost);
