@@ -12,6 +12,23 @@ enum MulOperation {
     PrimalToTerminal,
 }
 
+impl MulOperation {
+    // genはres, x, y,を受け取って、res = x * yの形のコードを生成する
+    // gen("res", "x", "y") -> "res = x * y"
+    fn generate_code<F>(&self, gen: F) -> String
+    where
+        F: Fn(&str, &str, &str) -> String,
+    {
+        match self {
+            MulOperation::ToXyY => gen("x", "x", "y"),
+            MulOperation::ToXYx => gen("y", "x", "y"),
+            MulOperation::To2XY => gen("x", "x", "x"),
+            MulOperation::ToX2Y => gen("y", "y", "y"),
+            _ => "".to_string(),
+        }
+    }
+}
+
 // x, y, mが与えられたとき、m<=lcm(x, y)ならa, b>=0, ax+by=mを満たすa, bが存在すれば一意
 // a, b <= sizeに対して、(a, b)を作るのに必要な最小手数を計算
 #[derive(Clone, Debug)]
@@ -487,6 +504,22 @@ impl Solver {
         path.reverse();
         Some((self.min_cost, path))
     }
+
+    fn generate_code_from_path<F>(&self, path: &[MulOperation], gen: F) -> String
+    where
+        F: Fn(&str, &str, &str) -> String,
+    {
+        let mut code = String::new();
+        for op in path {
+            let segment = &op.generate_code(&gen);
+            if segment.is_empty() {
+                continue;
+            }
+            code += segment;
+            code += "\n";
+        }
+        code
+    }
 }
 
 fn main() {
@@ -578,5 +611,16 @@ mod tests {
     #[test]
     fn test_solver_5000() {
         test_solver::<1000, 5000>();
+    }
+
+    #[test]
+    fn test_code_generation() {
+        use super::MulOperation::*;
+        let path = [ToX2Y, To2XY, ToXyY, ToXYx, Identity, PrimalToTerminal];
+        let solver = super::Solver::new(100);
+        let code =
+            solver.generate_code_from_path(&path, |res, x, y| format!("{} = {} * {};", res, x, y));
+        let expected = "y = y * y;\nx = x * x;\nx = x * y;\ny = x * y;\n".to_string();
+        assert_eq!(code, expected);
     }
 }
