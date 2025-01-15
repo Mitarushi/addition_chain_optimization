@@ -200,7 +200,7 @@ impl Solver {
                         continue;
                     }
 
-                    let lcm = x * y >> Self::gcd_trailing(x, y);
+                    let lcm = (x * y) >> Self::gcd_trailing(x, y);
                     if lcm > m {
                         if let Some((a, b)) = Self::crt(x, y, m) {
                             let next_state = SearchState::Terminal { a, b };
@@ -248,7 +248,7 @@ impl Solver {
                     );
                 }
                 SearchState::Terminal { a, b } => {
-                    if min_cost <= cost + Self::log2(a.max(b)) as usize - 1 {
+                    if min_cost < cost + Self::log2(a.max(b)) as usize {
                         continue;
                     }
 
@@ -302,6 +302,17 @@ impl Solver {
     }
 }
 
+fn main() {
+    const TERMINAL_TABLE_SIZE: usize = 100;
+    let solver = Solver::new(TERMINAL_TABLE_SIZE);
+    let initial_state = SearchState::Primal { x: 1, y: 1 };
+    let (cost, path) = solver.solve(128, initial_state).unwrap();
+    println!("cost: {}", cost);
+    for state in path.iter().rev() {
+        println!("{:?}", state);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     fn naive_dp(size: usize) -> Vec<usize> {
@@ -335,10 +346,10 @@ mod tests {
         let solver = super::Solver::new(TERMINAL_TABLE_SIZE);
         let expected = naive_dp(MAX_SIZE);
 
-        for i in 1..MAX_SIZE {
+        for (i, &expected) in expected.iter().enumerate().skip(1) {
             let initial_state = super::SearchState::Primal { x: 1, y: 1 };
             let (cost, path) = solver.solve(i, initial_state).unwrap();
-            assert_eq!(cost, expected[i], "i: {}, path: {:?}", i, path);
+            assert_eq!(cost, expected, "i: {}, path: {:?}", i, path);
         }
     }
     #[test]
@@ -359,16 +370,5 @@ mod tests {
     #[test]
     fn test_solver_5000() {
         test_solver::<1000, 5000>();
-    }
-}
-
-fn main() {
-    const TERMINAL_TABLE_SIZE: usize = 100;
-    let solver = Solver::new(TERMINAL_TABLE_SIZE);
-    let initial_state = SearchState::Primal { x: 1, y: 1 };
-    let (cost, path) = solver.solve(128, initial_state).unwrap();
-    println!("cost: {}", cost);
-    for state in path.iter().rev() {
-        println!("{:?}", state);
     }
 }
