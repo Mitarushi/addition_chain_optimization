@@ -82,8 +82,8 @@ impl TerminalTable {
     fn check_and_push(
         a: usize,
         b: usize,
-        table: &mut Vec<Vec<usize>>,
-        op_table: &mut Vec<Vec<MulOperation>>,
+        table: &mut [Vec<usize>],
+        op_table: &mut [Vec<MulOperation>],
         queue: &mut VecDeque<(usize, usize)>,
         next_cost: usize,
         op: MulOperation,
@@ -257,10 +257,16 @@ impl Solver {
         state: SearchState,
         cost: usize,
         mul_operation: MulOperation,
+        m: usize,
         cost_table: &mut HashMap<SearchState, (usize, MulOperation)>,
         queue: &mut VecDeque<SearchState>,
     ) {
         let state_norm = state.normalize_to_sorted();
+        if let SearchState::Primal { x, y: _ } = &state_norm {
+            if *x > m {
+                return;
+            }
+        }
         let entry = cost_table.entry(state_norm.clone());
         if let Vacant(entry) = entry {
             entry.insert((cost, mul_operation));
@@ -268,7 +274,7 @@ impl Solver {
         }
     }
 
-    fn end_check(
+    fn update_min_cost(
         &self,
         state: &SearchState,
         cost: usize,
@@ -284,7 +290,7 @@ impl Solver {
                 }
             }
             SearchState::Terminal { a: _, b: _ } => {
-                if let Some(terminal_cost) = self.terminal_table.get(&state) {
+                if let Some(terminal_cost) = self.terminal_table.get(state) {
                     let total_cost = cost + terminal_cost;
                     if total_cost < *min_cost {
                         *min_cost = total_cost;
@@ -317,7 +323,7 @@ impl Solver {
         Some(path)
     }
 
-    fn is_impossible_state(
+    fn is_impossible_to_expand(
         &self,
         state: &SearchState,
         cost: usize,
@@ -329,10 +335,6 @@ impl Solver {
         }
         match state {
             SearchState::Primal { x, y } => {
-                if *x > m || *y > m {
-                    return true;
-                }
-
                 min_cost <= cost + (Self::log2(m) - Self::log2(*x.max(y))) as usize
             }
             SearchState::Terminal { a, b } => min_cost <= cost + Self::log2(a.max(b) - 1) as usize,
@@ -365,6 +367,7 @@ impl Solver {
                     next_state,
                     cost,
                     MulOperation::PrimalToTerminal,
+                    m,
                     cost_table,
                     queue,
                 );
@@ -378,6 +381,7 @@ impl Solver {
                 SearchState::Primal { x: 2 * x, y },
                 next_cost,
                 MulOperation::To2XY,
+                m,
                 cost_table,
                 queue,
             );
@@ -387,6 +391,7 @@ impl Solver {
                 SearchState::Primal { x, y: 2 * y },
                 next_cost,
                 MulOperation::ToX2Y,
+                m,
                 cost_table,
                 queue,
             );
@@ -395,6 +400,7 @@ impl Solver {
             SearchState::Primal { x: x + y, y },
             next_cost,
             MulOperation::ToXyY,
+            m,
             cost_table,
             queue,
         );
@@ -402,6 +408,7 @@ impl Solver {
             SearchState::Primal { x, y: x + y },
             next_cost,
             MulOperation::ToXYx,
+            m,
             cost_table,
             queue,
         );
@@ -426,6 +433,7 @@ impl Solver {
                 SearchState::Terminal { a: a / 2, b },
                 next_cost,
                 MulOperation::To2XY,
+                0,
                 cost_table,
                 queue,
             );
@@ -435,6 +443,7 @@ impl Solver {
                 SearchState::Terminal { a, b: b / 2 },
                 next_cost,
                 MulOperation::ToX2Y,
+                0,
                 cost_table,
                 queue,
             );
@@ -444,6 +453,7 @@ impl Solver {
                 SearchState::Terminal { a: a - b, b },
                 next_cost,
                 MulOperation::ToXYx,
+                0,
                 cost_table,
                 queue,
             );
@@ -452,6 +462,7 @@ impl Solver {
                 SearchState::Terminal { a, b: b - a },
                 next_cost,
                 MulOperation::ToXyY,
+                0,
                 cost_table,
                 queue,
             );
@@ -471,9 +482,9 @@ impl Solver {
         while let Some(state) = queue.pop_front() {
             let cost = cost_table[&state.normalize_to_sorted()].0;
 
-            self.end_check(&state, cost, m, &mut min_cost, &mut min_state);
+            self.update_min_cost(&state, cost, m, &mut min_cost, &mut min_state);
 
-            if self.is_impossible_state(&state, cost, m, min_cost) {
+            if self.is_impossible_to_expand(&state, cost, m, min_cost) {
                 continue;
             }
 
@@ -557,7 +568,6 @@ mod tests {
 
             let sim = path.iter().fold(initial_state, |state, op| state.apply(op));
             if let super::SearchState::Primal { x, y } = sim {
-                // assert_eq!(x.max(y), i, "i: {}, path: {:?}, sim: {:?}", i, path, sim);
                 assert_eq!(
                     x.max(y),
                     i,
