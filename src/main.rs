@@ -97,6 +97,10 @@ impl Solver {
         (x | y).trailing_zeros()
     }
 
+    fn log2(x: usize) -> u32 {
+        64 - x.leading_zeros()
+    }
+
     fn mod_inv(x: usize, m: usize) -> usize {
         let mut a = x as i64;
         let mut b = m as i64;
@@ -152,6 +156,7 @@ impl Solver {
         cost_table.insert(initial_state, (0, None));
 
         let m_tail = m.trailing_zeros();
+        let m_log2 = Self::log2(m);
         let mut min_cost = usize::MAX / 2;
         let mut min_state = None;
 
@@ -189,6 +194,9 @@ impl Solver {
             match state {
                 SearchState::Primal { x, y } => {
                     if x > m || y > m {
+                        continue;
+                    }
+                    if min_cost <= cost + (m_log2 - Self::log2(x.max(y))) as usize {
                         continue;
                     }
 
@@ -240,6 +248,10 @@ impl Solver {
                     );
                 }
                 SearchState::Terminal { a, b } => {
+                    if min_cost <= cost + Self::log2(a.max(b)) as usize - 1 {
+                        continue;
+                    }
+
                     if a % 2 == 0 {
                         Self::check_and_push(
                             &state,
@@ -344,10 +356,10 @@ mod tests {
         test_solver::<1000, 1000>();
     }
 
-    // #[test]
-    // fn test_solver_10000() {
-    //     test_solver::<3000, 10000>();
-    // }
+    #[test]
+    fn test_solver_5000() {
+        test_solver::<1000, 5000>();
+    }
 }
 
 fn main() {
