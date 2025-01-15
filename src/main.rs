@@ -84,14 +84,12 @@ impl SearchState {
 #[derive(Clone, Debug)]
 struct Solver {
     terminal_table: TerminalTable,
-    m: usize,
 }
 
 impl Solver {
-    fn new(terminal_table_size: usize, m: usize) -> Self {
+    fn new(terminal_table_size: usize) -> Self {
         Self {
             terminal_table: TerminalTable::new(terminal_table_size),
-            m,
         }
     }
 
@@ -143,13 +141,13 @@ impl Solver {
         }
     }
 
-    fn solve(&mut self, initial_state: SearchState) -> Option<(usize, Vec<SearchState>)> {
+    fn solve(&mut self, m: usize, initial_state: SearchState) -> Option<(usize, Vec<SearchState>)> {
         let mut queue = VecDeque::new();
         queue.push_back(initial_state.clone());
         let mut cost_table = HashMap::new();
         cost_table.insert(initial_state, (0, None));
 
-        let m_tail = self.m.trailing_zeros();
+        let m_tail = m.trailing_zeros();
         let mut min_cost = usize::MAX;
         let mut min_state = None;
 
@@ -159,7 +157,7 @@ impl Solver {
 
             match state {
                 SearchState::Primal { x, y } => {
-                    if x == self.m || y == self.m {
+                    if x == m || y == m {
                         if cost < min_cost {
                             min_cost = cost;
                             min_state = Some(state.clone());
@@ -185,13 +183,13 @@ impl Solver {
 
             match state {
                 SearchState::Primal { x, y } => {
-                    if x > self.m || y > self.m {
+                    if x > m || y > m {
                         continue;
                     }
 
                     let lcm = x * y >> Self::gcd_trailing(x, y);
-                    if lcm > self.m {
-                        if let Some((a, b)) = Self::crt(x, y, self.m) {
+                    if lcm > m {
+                        if let Some((a, b)) = Self::crt(x, y, m) {
                             let next_state = SearchState::Terminal { a, b };
                             Self::check_and_push(
                                 &state,
@@ -289,9 +287,9 @@ impl Solver {
 
 fn main() {
     const TERMINAL_TABLE_SIZE: usize = 100;
-    let mut solver = Solver::new(TERMINAL_TABLE_SIZE, 128);
+    let mut solver = Solver::new(TERMINAL_TABLE_SIZE);
     let initial_state = SearchState::Primal { x: 1, y: 1 };
-    let (cost, path) = solver.solve(initial_state).unwrap();
+    let (cost, path) = solver.solve(128, initial_state).unwrap();
     println!("cost: {}", cost);
     for state in path.iter().rev() {
         println!("{:?}", state);
