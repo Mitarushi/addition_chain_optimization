@@ -197,12 +197,22 @@ impl SearchState {
 #[derive(Clone, Debug)]
 struct Solver {
     terminal_table: TerminalTable,
+    m: usize,
+    cost_table: HashMap<SearchState, (usize, MulOperation)>,
+    terminal_to_primal: HashMap<SearchState, SearchState>,
+    min_cost: usize,
+    min_state: Option<SearchState>,
 }
 
 impl Solver {
     fn new(terminal_table_size: usize) -> Self {
         Self {
             terminal_table: TerminalTable::new(terminal_table_size),
+            m: 0,
+            cost_table: HashMap::default(),
+            terminal_to_primal: HashMap::default(),
+            min_cost: usize::MAX / 2,
+            min_state: None,
         }
     }
 
@@ -254,64 +264,58 @@ impl Solver {
     }
 
     fn check_and_push(
+        &mut self,
         state: SearchState,
         cost: usize,
         mul_operation: MulOperation,
-        m: usize,
-        cost_table: &mut HashMap<SearchState, (usize, MulOperation)>,
         queue: &mut VecDeque<SearchState>,
     ) {
-        let state_norm = state.normalize_to_sorted();
-        if let SearchState::Primal { x, y: _ } = &state_norm {
-            if *x > m {
-                return;
-            }
+        if self.update_min_cost(&state, cost) {
+            self.cost_table
+                .insert(state.normalize_to_sorted(), (cost, mul_operation));
+            return;
         }
-        let entry = cost_table.entry(state_norm.clone());
+        if self.is_impossible_to_expand(&state, cost) {
+            return;
+        }
+
+        let state_norm = state.normalize_to_sorted();
+        let entry = self.cost_table.entry(state_norm.clone());
         if let Vacant(entry) = entry {
             entry.insert((cost, mul_operation));
             queue.push_back(state);
         }
     }
 
-    fn update_min_cost(
-        &self,
-        state: &SearchState,
-        cost: usize,
-        m: usize,
-        min_cost: &mut usize,
-        min_state: &mut Option<SearchState>,
-    ) {
+    fn update_min_cost(&mut self, state: &SearchState, cost: usize) -> bool {
         match state {
             SearchState::Primal { x, y } => {
-                if (*x == m || *y == m) && cost < *min_cost {
-                    *min_cost = cost;
-                    *min_state = Some(state.clone());
+                if (*x == self.m || *y == self.m) && cost < self.min_cost {
+                    self.min_cost = cost;
+                    self.min_state = Some(state.clone());
+                    return true;
                 }
             }
             SearchState::Terminal { a: _, b: _ } => {
                 if let Some(terminal_cost) = self.terminal_table.get(state) {
                     let total_cost = cost + terminal_cost;
-                    if total_cost < *min_cost {
-                        *min_cost = total_cost;
-                        *min_state = Some(state.clone());
+                    if total_cost < self.min_cost {
+                        self.min_cost = total_cost;
+                        self.min_state = Some(state.clone());
+                        return true;
                     }
                 }
             }
         }
+        false
     }
 
-    fn reconstruct_path(
-        &self,
-        state: SearchState,
-        cost_table: &HashMap<SearchState, (usize, MulOperation)>,
-        terminal_to_primal: &HashMap<SearchState, SearchState>,
-    ) -> Option<Vec<MulOperation>> {
+    fn reconstruct_path(&self, state: SearchState) -> Option<Vec<MulOperation>> {
         let mut state = state;
         let mut path = Vec::new();
-        while let Some((_, op)) = cost_table.get(&state.normalize_to_sorted()) {
+        while let Some((_, op)) = self.cost_table.get(&state.normalize_to_sorted()) {
             if let MulOperation::PrimalToTerminal = op {
-                state = terminal_to_primal.get(&state)?.clone();
+                state = self.terminal_to_primal.get(&state)?.clone();
                 continue;
             }
             if let MulOperation::Identity = op {
@@ -323,31 +327,27 @@ impl Solver {
         Some(path)
     }
 
-    fn is_impossible_to_expand(
-        &self,
-        state: &SearchState,
-        cost: usize,
-        m: usize,
-        min_cost: usize,
-    ) -> bool {
-        if cost + 1 >= min_cost {
+    fn is_impossible_to_expand(&self, state: &SearchState, cost: usize) -> bool {
+        if cost + 1 >= self.min_cost {
             return true;
         }
         match state {
             SearchState::Primal { x, y } => {
-                min_cost <= cost + (Self::log2(m) - Self::log2(*x.max(y))) as usize
+                if *x > self.m || *y > self.m {
+                    return true;
+                }
+                self.min_cost <= cost + (Self::log2(self.m) - Self::log2(*x.max(y))) as usize
             }
-            SearchState::Terminal { a, b } => min_cost <= cost + Self::log2(a.max(b) - 1) as usize,
+            SearchState::Terminal { a, b } => {
+                self.min_cost <= cost + Self::log2(a.max(b) - 1) as usize
+            }
         }
     }
 
     fn expand_primal_state(
-        &self,
+        &mut self,
         state: SearchState,
         cost: usize,
-        m: usize,
-        cost_table: &mut HashMap<SearchState, (usize, MulOperation)>,
-        terminal_to_primal: &mut HashMap<SearchState, SearchState>,
         queue: &mut VecDeque<SearchState>,
     ) {
         let (x, y) = match state {
@@ -357,68 +357,52 @@ impl Solver {
 
         let next_cost = cost + 1;
         let lcm = (x * y) >> Self::gcd_trailing(x, y);
-        if lcm > m {
-            if let Ok((a, b)) = Self::crt(x, y, m) {
+        if lcm > self.m {
+            if let Ok((a, b)) = Self::crt(x, y, self.m) {
                 let next_state = SearchState::Terminal { a, b };
-                terminal_to_primal
+                self.terminal_to_primal
                     .entry(next_state.clone())
                     .or_insert(state.clone());
-                Self::check_and_push(
-                    next_state,
-                    cost,
-                    MulOperation::PrimalToTerminal,
-                    m,
-                    cost_table,
-                    queue,
-                );
+                self.check_and_push(next_state, cost, MulOperation::PrimalToTerminal, queue);
             }
             return;
         }
 
-        let m_tail = m.trailing_zeros();
+        let m_tail = self.m.trailing_zeros();
         if m_tail >= Self::gcd_trailing(2 * x, y) {
-            Self::check_and_push(
+            self.check_and_push(
                 SearchState::Primal { x: 2 * x, y },
                 next_cost,
                 MulOperation::To2XY,
-                m,
-                cost_table,
                 queue,
             );
         }
         if m_tail >= Self::gcd_trailing(x, 2 * y) {
-            Self::check_and_push(
+            self.check_and_push(
                 SearchState::Primal { x, y: 2 * y },
                 next_cost,
                 MulOperation::ToX2Y,
-                m,
-                cost_table,
                 queue,
             );
         }
-        Self::check_and_push(
+        self.check_and_push(
             SearchState::Primal { x: x + y, y },
             next_cost,
             MulOperation::ToXyY,
-            m,
-            cost_table,
             queue,
         );
-        Self::check_and_push(
+        self.check_and_push(
             SearchState::Primal { x, y: x + y },
             next_cost,
             MulOperation::ToXYx,
-            m,
-            cost_table,
             queue,
         );
     }
 
     fn expand_terminal_state(
-        &self,
+        &mut self,
         state: SearchState,
         cost: usize,
-        cost_table: &mut HashMap<SearchState, (usize, MulOperation)>,
         queue: &mut VecDeque<SearchState>,
     ) {
         let (a, b) = match state {
@@ -429,93 +413,83 @@ impl Solver {
         let next_cost = cost + 1;
 
         if a % 2 == 0 {
-            Self::check_and_push(
+            self.check_and_push(
                 SearchState::Terminal { a: a / 2, b },
                 next_cost,
                 MulOperation::To2XY,
-                0,
-                cost_table,
                 queue,
             );
         }
         if b % 2 == 0 {
-            Self::check_and_push(
+            self.check_and_push(
                 SearchState::Terminal { a, b: b / 2 },
                 next_cost,
                 MulOperation::ToX2Y,
-                0,
-                cost_table,
                 queue,
             );
         }
         if a >= b {
-            Self::check_and_push(
+            self.check_and_push(
                 SearchState::Terminal { a: a - b, b },
                 next_cost,
                 MulOperation::ToXYx,
-                0,
-                cost_table,
                 queue,
             );
         } else {
-            Self::check_and_push(
+            self.check_and_push(
                 SearchState::Terminal { a, b: b - a },
                 next_cost,
                 MulOperation::ToXyY,
-                0,
-                cost_table,
                 queue,
             );
         }
     }
 
-    fn solve(&self, m: usize, initial_state: SearchState) -> Option<(usize, Vec<MulOperation>)> {
-        let mut queue = VecDeque::new();
-        queue.push_back(initial_state.clone());
-        let mut cost_table = HashMap::default();
-        let mut terminal_to_primal = HashMap::default();
-        cost_table.insert(initial_state, (0, MulOperation::Identity));
+    fn reset(&mut self, m: usize) {
+        self.m = m;
+        self.cost_table.clear();
+        self.terminal_to_primal.clear();
+        self.min_cost = usize::MAX / 2;
+        self.min_state = None;
+    }
 
-        let mut min_cost = usize::MAX / 2;
-        let mut min_state = None;
+    fn solve(
+        &mut self,
+        m: usize,
+        initial_state: SearchState,
+    ) -> Option<(usize, Vec<MulOperation>)> {
+        let mut queue = VecDeque::new();
+        self.reset(m);
+        self.check_and_push(initial_state.clone(), 0, MulOperation::Identity, &mut queue);
 
         while let Some(state) = queue.pop_front() {
-            let cost = cost_table[&state.normalize_to_sorted()].0;
+            let cost = self.cost_table[&state.normalize_to_sorted()].0;
 
-            self.update_min_cost(&state, cost, m, &mut min_cost, &mut min_state);
-
-            if self.is_impossible_to_expand(&state, cost, m, min_cost) {
+            if self.is_impossible_to_expand(&state, cost) {
                 continue;
             }
 
             match state {
                 SearchState::Primal { x: _, y: _ } => {
-                    self.expand_primal_state(
-                        state,
-                        cost,
-                        m,
-                        &mut cost_table,
-                        &mut terminal_to_primal,
-                        &mut queue,
-                    );
+                    self.expand_primal_state(state, cost, &mut queue);
                 }
                 SearchState::Terminal { a: _, b: _ } => {
-                    self.expand_terminal_state(state, cost, &mut cost_table, &mut queue);
+                    self.expand_terminal_state(state, cost, &mut queue);
                 }
             }
         }
 
-        let state = min_state?.clone();
+        let state = self.min_state.clone()?;
         let mut path = self.terminal_table.get_path(&state).unwrap_or_default();
-        path.extend(self.reconstruct_path(state, &cost_table, &terminal_to_primal)?);
+        path.extend(self.reconstruct_path(state)?);
         path.reverse();
-        Some((min_cost, path))
+        Some((self.min_cost, path))
     }
 }
 
 fn main() {
     const TERMINAL_TABLE_SIZE: usize = 100;
-    let solver = Solver::new(TERMINAL_TABLE_SIZE);
+    let mut solver = Solver::new(TERMINAL_TABLE_SIZE);
     let initial_state = SearchState::Primal { x: 1, y: 1 };
     let (cost, path) = solver.solve(110, initial_state).unwrap();
     println!("cost: {}", cost);
@@ -554,7 +528,7 @@ mod tests {
     }
 
     fn test_solver<const TERMINAL_TABLE_SIZE: usize, const MAX_SIZE: usize>() {
-        let solver = super::Solver::new(TERMINAL_TABLE_SIZE);
+        let mut solver = super::Solver::new(TERMINAL_TABLE_SIZE);
         let expected = naive_dp(MAX_SIZE);
 
         for (i, &expected) in expected.iter().enumerate().skip(1) {
