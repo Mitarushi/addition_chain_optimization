@@ -5,3 +5,4 @@ edition = "2021"
 
 [dependencies]
 rustc-hash = "2.1.0"
+clap = { version = "4.5.26", features = ["derive"] }

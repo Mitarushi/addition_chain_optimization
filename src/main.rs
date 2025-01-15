@@ -1,6 +1,73 @@
+use clap::Parser;
 use rustc_hash::FxHashMap as HashMap;
 use std::collections::hash_map::Entry::Vacant;
 use std::collections::VecDeque;
+
+#[derive(Parser, Debug)]
+#[command(author = "Mitarushi")]
+#[command(about = "This is a solver for the optimal addition chain with two variables.")]
+struct Args {
+    /// The target number to reach.
+    #[arg(short = 'm')]
+    m: usize,
+
+    /// The size of the terminal table.
+    #[arg(short = 't', default_value = "5000")]
+    terminal_table_size: usize,
+
+    /// The initial state of the solver.
+    #[arg(short = 'i', default_value = "1,1")]
+    initial_state: String,
+
+    /// code generation template
+    #[arg(short = 'c', default_value = "{r} = {x} * {y};")]
+    code_template: String,
+
+    /// suppress the output of the code
+    #[arg(short = 's')]
+    suppress_code: bool,
+
+    /// suppress the output of the total cost
+    #[arg(short = 'p')]
+    suppress_cost: bool,
+}
+
+fn parse_initial_state(initial_state: &str) -> Result<SearchState, String> {
+    let mut iter = initial_state.split(',');
+    let x = iter
+        .next()
+        .ok_or("x is not provided")?
+        .parse()
+        .map_err(|_| "x is not a number")?;
+    let y = iter
+        .next()
+        .ok_or("y is not provided")?
+        .parse()
+        .map_err(|_| "y is not a number")?;
+    Ok(SearchState::Primal { x, y })
+}
+
+fn main() {
+    let args = Args::parse();
+    let initial_state = parse_initial_state(&args.initial_state).unwrap();
+    let mut solver = Solver::new(args.terminal_table_size);
+    let (total_cost, path) = solver.solve(args.m, initial_state).unwrap();
+
+    let code_gen = |res: &str, x: &str, y: &str| {
+        args.code_template
+            .replace("{r}", res)
+            .replace("{x}", x)
+            .replace("{y}", y)
+    };
+    let generated_code = solver.generate_code_from_path(&path, code_gen);
+
+    if !args.suppress_cost {
+        println!("Cost: {}", total_cost);
+    }
+    if !args.suppress_code {
+        println!("{}", generated_code);
+    }
+}
 
 #[derive(Clone, Debug)]
 enum MulOperation {
@@ -519,17 +586,6 @@ impl Solver {
             code += "\n";
         }
         code
-    }
-}
-
-fn main() {
-    const TERMINAL_TABLE_SIZE: usize = 100;
-    let mut solver = Solver::new(TERMINAL_TABLE_SIZE);
-    let initial_state = SearchState::Primal { x: 1, y: 1 };
-    let (cost, path) = solver.solve(110, initial_state).unwrap();
-    println!("cost: {}", cost);
-    for state in path.iter() {
-        println!("{:?}", state);
     }
 }
 
