@@ -15,8 +15,8 @@ impl TerminalTable {
         let mut queue = VecDeque::new();
         queue.push_back((0, 1));
         queue.push_back((1, 0));
-        table[0][1] = 1;
-        table[1][0] = 1;
+        table[0][1] = 0;
+        table[1][0] = 0;
 
         let check_and_push = |a: usize,
                               b: usize,
@@ -154,8 +154,30 @@ impl Solver {
         let mut min_state = None;
 
         while let Some(state) = queue.pop_front() {
-            let cost = cost_table[&state].0 + 1;
+            let cost = cost_table[&state].0;
             let next_cost = cost + 1;
+
+            match state {
+                SearchState::Primal { x, y } => {
+                    if x == self.m || y == self.m {
+                        if cost < min_cost {
+                            min_cost = cost;
+                            min_state = Some(state.clone());
+                        }
+                        continue;
+                    }
+                }
+                SearchState::Terminal { a: _, b: _ } => {
+                    if let Some(terminal_cost) = self.terminal_table.get(&state) {
+                        let total_cost = cost + terminal_cost;
+                        if total_cost < min_cost {
+                            min_cost = total_cost;
+                            min_state = Some(state.clone());
+                        }
+                        continue;
+                    }
+                }
+            }
 
             if next_cost >= min_cost {
                 break;
@@ -163,6 +185,10 @@ impl Solver {
 
             match state {
                 SearchState::Primal { x, y } => {
+                    if x > self.m || y > self.m {
+                        continue;
+                    }
+
                     let lcm = x * y >> Self::gcd_trailing(x, y);
                     if lcm > self.m {
                         if let Some((a, b)) = Self::crt(x, y, self.m) {
@@ -177,7 +203,7 @@ impl Solver {
                         }
                         continue;
                     }
-                    if m_tail <= Self::gcd_trailing(2 * x, y) {
+                    if m_tail >= Self::gcd_trailing(2 * x, y) {
                         Self::check_and_push(
                             &state,
                             SearchState::Primal { x: 2 * x, y },
@@ -186,7 +212,7 @@ impl Solver {
                             &mut queue,
                         );
                     }
-                    if m_tail <= Self::gcd_trailing(x, 2 * y) {
+                    if m_tail >= Self::gcd_trailing(x, 2 * y) {
                         Self::check_and_push(
                             &state,
                             SearchState::Primal { x, y: 2 * y },
@@ -211,14 +237,6 @@ impl Solver {
                     );
                 }
                 SearchState::Terminal { a, b } => {
-                    if let Some(terminal_cost) = self.terminal_table.get(&state) {
-                        let total_cost = cost + terminal_cost;
-                        if total_cost < min_cost {
-                            min_cost = total_cost;
-                            min_state = Some(state.clone());
-                        }
-                        continue;
-                    }
                     if a % 2 == 0 {
                         Self::check_and_push(
                             &state,
@@ -270,8 +288,8 @@ impl Solver {
 }
 
 fn main() {
-    const TERMINAL_TABLE_SIZE: usize = 10000;
-    let mut solver = Solver::new(TERMINAL_TABLE_SIZE, 998244353);
+    const TERMINAL_TABLE_SIZE: usize = 100;
+    let mut solver = Solver::new(TERMINAL_TABLE_SIZE, 128);
     let initial_state = SearchState::Primal { x: 1, y: 1 };
     let (cost, path) = solver.solve(initial_state).unwrap();
     println!("cost: {}", cost);
